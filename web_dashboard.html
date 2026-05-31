@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目风险早期预警</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 font-sans">
+    <nav class="bg-red-700 text-white p-4 shadow-lg">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <h1 class="text-xl font-bold"><i class="fa fa-exclamation-triangle mr-2"></i>项目风险早期预警</h1>
+            <div class="space-x-4 text-sm">
+                <button onclick="showTab('dashboard')" class="tab-btn px-3 py-1 rounded bg-red-500">监控面板</button>
+                <button onclick="showTab('config')" class="tab-btn px-3 py-1 rounded hover:bg-red-500"><i class="fa fa-cog"></i> 阈值配置</button>
+                <button onclick="showTab('suggestions')" class="tab-btn px-3 py-1 rounded hover:bg-red-500"><i class="fa fa-book"></i> 处置建议库</button>
+                <button onclick="showTab('history')" class="tab-btn px-3 py-1 rounded hover:bg-red-500"><i class="fa fa-line-chart"></i> 趋势预测</button>
+            </div>
+        </div>
+    </nav>
+    <div class="max-w-6xl mx-auto p-4">
+        <!-- 通知栏 -->
+        <div id="alertBar" class="hidden mb-4"></div>
+
+        <!-- 监控面板 -->
+        <div id="tab-dashboard" class="tab-content">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-3">
+                    <div class="bg-white rounded-xl shadow p-4 flex flex-wrap items-center gap-4">
+                        <span class="font-medium text-sm"><i class="fa fa-folder-open mr-1 text-red-600"></i>选择项目：</span>
+                        <select id="projectSelect" onchange="switchProject()" class="border rounded p-2 text-sm"></select>
+                        <button onclick="simulateData()" class="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700"><i class="fa fa-refresh mr-1"></i>模拟刷新</button>
+                        <button onclick="startAutoSim()" class="bg-orange-600 text-white px-4 py-2 rounded text-sm hover:bg-orange-700" id="autoBtn"><i class="fa fa-play mr-1"></i>自动模拟</button>
+                        <span class="text-xs text-gray-400 ml-auto">上次更新：<span id="lastUpdate">-</span></span>
+                        <label class="flex items-center gap-1 text-sm ml-2 cursor-pointer" title="浏览器通知">
+                            <i class="fa fa-bell text-gray-500"></i>
+                            <input type="checkbox" id="notificationToggle" onchange="toggleNotification()" class="sr-only peer">
+                            <span class="w-9 h-5 bg-gray-300 rounded-full peer-checked:bg-red-500 relative inline-block transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full after:transition-all peer-checked:after:translate-x-4 cursor-pointer"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4" id="riskCards"></div>
+                <div class="lg:col-span-3">
+                    <div class="bg-white rounded-xl shadow p-6">
+                        <h3 class="font-bold mb-4"><i class="fa fa-fire mr-2 text-red-600"></i>风险热力图</h3>
+                        <div id="riskHeatmap" class="grid grid-cols-5 gap-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 阈值配置 -->
+        <div id="tab-config" class="tab-content hidden">
+            <div class="bg-white rounded-xl shadow p-6 max-w-2xl mx-auto">
+                <h3 class="font-bold mb-4"><i class="fa fa-sliders mr-2 text-red-600"></i>风险指标阈值配置</h3>
+                <div class="space-y-4" id="thresholdConfig"></div>
+                <button onclick="saveThresholds()" class="w-full bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 mt-4"><i class="fa fa-save mr-2"></i>保存配置</button>
+            </div>
+        </div>
+
+        <!-- 风险处置建议库 -->
+        <div id="tab-suggestions" class="tab-content hidden">
+            <div class="bg-white rounded-xl shadow p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold"><i class="fa fa-book mr-2 text-red-600"></i>风险处置建议库</h3>
+                    <div class="flex gap-2">
+                        <select id="suggestionFilter" onchange="renderSuggestions()" class="border rounded p-1.5 text-xs">
+                            <option value="all">全部类型</option>
+                            <option value="schedule">进度偏差</option>
+                            <option value="commDelay">沟通延迟</option>
+                            <option value="resource">资源不足</option>
+                            <option value="requirement">需求变更</option>
+                            <option value="quality">质量风险</option>
+                        </select>
+                        <button onclick="showAddSuggestion()" class="bg-emerald-600 text-white px-3 py-1.5 rounded text-xs hover:bg-emerald-700"><i class="fa fa-plus mr-1"></i>新增模板</button>
+                    </div>
+                </div>
+                <div id="suggestionList" class="space-y-3"></div>
+            </div>
+            <!-- 新增/编辑建议模板 -->
+            <div id="addSuggestionPanel" class="hidden mt-4 bg-white rounded-xl shadow p-6 max-w-2xl mx-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm"><i class="fa fa-plus-circle mr-2 text-emerald-600"></i>新增处置模板</h3>
+                    <button onclick="cancelAddSuggestion()" class="text-gray-400 hover:text-gray-600"><i class="fa fa-times"></i></button>
+                </div>
+                <div class="space-y-3">
+                    <div><label class="block text-xs text-gray-500 mb-1">风险类型</label><select id="newSugType" class="w-full border rounded p-2 text-sm"><option value="schedule">进度偏差</option><option value="commDelay">沟通延迟</option><option value="resource">资源不足</option><option value="requirement">需求变更</option><option value="quality">质量风险</option></select></div>
+                    <div><label class="block text-xs text-gray-500 mb-1">处置方案标题</label><input type="text" id="newSugTitle" class="w-full border rounded p-2 text-sm"></div>
+                    <div><label class="block text-xs text-gray-500 mb-1">具体步骤（每行一步）</label><textarea id="newSugSteps" rows="4" class="w-full border rounded p-2 text-sm" placeholder="1. 第一步...\n2. 第二步..."></textarea></div>
+                    <div><label class="block text-xs text-gray-500 mb-1">负责人建议</label><input type="text" id="newSugOwner" class="w-full border rounded p-2 text-sm" placeholder="如：项目经理 / 技术负责人"></div>
+                </div>
+                <button onclick="saveSuggestion()" class="w-full bg-emerald-600 text-white py-2 rounded text-sm hover:bg-emerald-700 mt-4"><i class="fa fa-save mr-1"></i>保存</button>
+            </div>
+        </div>
+
+        <!-- 历史趋势与预测 -->
+        <div id="tab-history" class="tab-content hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-xl shadow p-6">
+                        <h3 class="font-bold mb-4"><i class="fa fa-line-chart mr-2 text-red-600"></i>风险评分趋势与预测</h3>
+                        <div id="trendChart" class="w-full" style="height:300px"></div>
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <div class="bg-white rounded-xl shadow p-5">
+                        <h4 class="font-bold mb-3"><i class="fa fa-bar-chart mr-2 text-red-600"></i>预测统计</h4>
+                        <div id="predictionStats" class="space-y-3 text-sm"></div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow p-5">
+                        <h4 class="font-bold mb-3"><i class="fa fa-exclamation-circle mr-2 text-red-600"></i>预警建议</h4>
+                        <div id="predictionAdvice" class="text-sm"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const RISK_INDICATORS = [
+            { id: 'schedule', name: '进度偏差', icon: 'fa-calendar', unit: '天', desc: '实际进度与计划偏差' },
+            { id: 'commDelay', name: '沟通延迟', icon: 'fa-comments', unit: '天', desc: '跨部门响应延迟' },
+            { id: 'resource', name: '资源不足', icon: 'fa-users', unit: '%', desc: '资源缺口比例' },
+            { id: 'requirement', name: '需求变更', icon: 'fa-pencil-square-o', unit: '次', desc: '本月需求变更次数' },
+            { id: 'quality', name: '质量风险', icon: 'fa-bug', unit: '%', desc: '缺陷率/返工率' }
+        ];
+
+        const DEFAULT_THRESHOLDS = { schedule: { warn: 3, danger: 7 }, commDelay: { warn: 1, danger: 3 }, resource: { warn: 15, danger: 30 }, requirement: { warn: 3, danger: 6 }, quality: { warn: 10, danger: 20 } };
+
+        const DEMO_PROJECTS = [
+            { id: 'proj1', name: '电商平台V3.0', risks: { schedule: 5, commDelay: 2, resource: 20, requirement: 4, quality: 12 } },
+            { id: 'proj2', name: 'CRM系统迁移', risks: { schedule: 1, commDelay: 0.5, resource: 8, requirement: 2, quality: 5 } },
+            { id: 'proj3', name: '数据分析平台', risks: { schedule: 8, commDelay: 4, resource: 35, requirement: 7, quality: 25 } }
+        ];
+
+        // ============================================================
+        // 风险处置建议库
+        // ============================================================
+        const DEFAULT_SUGGESTIONS = {
+            schedule: [
+                { title: '紧急赶工方案', steps: ['识别关键路径上的任务', '增派人力加班赶工', '调整非关键路径任务的优先级', '每日进度站会跟踪'], owner: '项目经理' },
+                { title: '进度压缩与并行', steps: ['分析可并行执行的任务', '快速跟进关键路径任务', '适度削减非核心功能范围', '与客户沟通调整交付节点'], owner: '项目经理' },
+                { title: '里程碑重新校准', steps: ['评估剩余工作量', '重新制定里程碑计划', '与干系人沟通调整预期', '增加缓冲时间'], owner: '项目经理' }
+            ],
+            commDelay: [
+                { title: '建立快速响应机制', steps: ['设定跨部门响应SLA（紧急2h/常规8h）', '建立关键联系人清单', '配置自动升级通知'], owner: 'PMO' },
+                { title: '信息同步流程优化', steps: ['建立每日站会制度', '使用统一协作平台记录沟通', '关键决策24小时内书面确认'], owner: '项目经理' },
+                { title: '沟通渠道多元化', steps: ['建立项目专属沟通群', '设立固定的周会/月会', '引入异步协作工具'], owner: '项目经理' }
+            ],
+            resource: [
+                { title: '资源调配优化', steps: ['评估现有资源利用率', '从低优先级项目临时调拨资源', '申请外包或临时人员补充', '优化任务分配减少资源等待'], owner: '资源经理' },
+                { title: '外包或招聘补充', steps: ['评估外包可行性', '启动紧急招聘流程', '引入兼职或自由职业者', '与HR协调加急处理'], owner: '资源经理' },
+                { title: '范围调整与优先级', steps: ['重新评估项目优先级', '推迟非紧急功能', '与客户协商核心功能优先交付', '释放部分资源用于关键任务'], owner: '项目负责人' }
+            ],
+            requirement: [
+                { title: '需求变更控制流程', steps: ['建立变更控制委员会(CCB)', '所有变更需提交正式申请', '评估变更影响后才能批准', '紧急变更走绿色通道'], owner: '需求经理' },
+                { title: '版本规划调整', steps: ['将新增需求排入下个版本', '当前版本冻结需求范围', '与客户沟通版本规划'], owner: '产品经理' },
+                { title: '需求澄清与确认', steps: ['组织需求澄清会议', '编写需求确认文档', '双方签字确认避免反复变更', '建立需求优先级矩阵'], owner: '需求经理' }
+            ],
+            quality: [
+                { title: '质量审查加严', steps: ['增加代码审查频率', '引入自动化测试覆盖', '设立质量门禁标准', '进行专项技术复盘'], owner: '技术负责人' },
+                { title: '缺陷修复专项', steps: ['统计并分类现有缺陷', '按优先级分配修复任务', '设立缺陷修复冲刺', '验证修复效果后关闭'], owner: '质量经理' },
+                { title: '流程改进与培训', steps: ['分析缺陷根因', '改进开发流程规范', '组织技术培训和代码规范培训', '引入自动化检测工具'], owner: '技术负责人' }
+            ]
+        };
+
+        let projects = JSON.parse(localStorage.getItem('riskProjects') || 'null') || DEMO_PROJECTS.map(p => ({ ...p }));
+        let thresholds = JSON.parse(localStorage.getItem('riskThresholds') || 'null') || JSON.parse(JSON.stringify(DEFAULT_THRESHOLDS));
+        let histories = JSON.parse(localStorage.getItem('riskHistories') || '{}');
+        let customSuggestions = JSON.parse(localStorage.getItem('riskSuggestions') || 'null') || {};
+        let currentProjectId = 'proj1';
+        let autoTimer = null;
+        let notificationEnabled = JSON.parse(localStorage.getItem('riskNotificationEnabled') || 'false');
+        let lastNotifiedRiskIds = {};
+
+        function getSuggestions(type) {
+            const defaults = DEFAULT_SUGGESTIONS[type] || [];
+            const customs = customSuggestions[type] || [];
+            return [...defaults, ...customs];
+        }
+
+        function saveSuggestions() { localStorage.setItem('riskSuggestions', JSON.stringify(customSuggestions)); }
+
+        function requestNotificationPermission() {
+            if (!('Notification' in window)) return;
+            if (Notification.permission === 'default') Notification.requestPermission();
+        }
+
+        function toggleNotification() {
+            const toggle = document.getElementById('notificationToggle');
+            if (!('Notification' in window)) { alert('您的浏览器不支持系统通知功能'); toggle.checked = false; return; }
+            if (toggle.checked) {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(perm => {
+                        if (perm === 'granted') { notificationEnabled = true; localStorage.setItem('riskNotificationEnabled', 'true'); sendTestNotification(); }
+                        else { toggle.checked = false; alert('需要允许通知权限才能使用此功能'); }
+                    });
+                } else if (Notification.permission === 'granted') { notificationEnabled = true; localStorage.setItem('riskNotificationEnabled', 'true'); sendTestNotification(); }
+                else { toggle.checked = false; alert('通知权限已被拒绝，请在浏览器设置中重新开启'); }
+            } else { notificationEnabled = false; localStorage.setItem('riskNotificationEnabled', 'false'); }
+        }
+
+        function sendTestNotification() {
+            if (!notificationEnabled || Notification.permission !== 'granted') return;
+            try { new Notification('项目风险早期预警', { body: '通知功能已开启，当风险指标超阈值时将自动提醒您', icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⚠️</text></svg>' }); }
+            catch(e) { new Notification('项目风险早期预警', { body: '通知功能已开启' }); }
+        }
+
+        function sendRiskNotification(proj, riskItem, val, th) {
+            if (!notificationEnabled || Notification.permission !== 'granted') return;
+            const riskId = proj.id + '_' + riskItem.id;
+            const now = Date.now();
+            if (lastNotifiedRiskIds[riskId] && (now - lastNotifiedRiskIds[riskId]) < 300000) return;
+            lastNotifiedRiskIds[riskId] = now;
+
+            // 获取处置建议
+            const sugList = getSuggestions(riskItem.id);
+            const firstSug = sugList.length > 0 ? sugList[0] : null;
+
+            try {
+                new Notification('🚨 风险预警 - ' + proj.name, {
+                    body: riskItem.name + ': ' + val + riskItem.unit + '（阈值: ' + th.danger + '）' + (firstSug ? '\n建议: ' + firstSug.title : ''),
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚨</text></svg>'
+                });
+            } catch(e) { new Notification('风险预警 - ' + proj.name, { body: riskItem.name + ' 指标超标!' }); }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() { document.getElementById('notificationToggle').checked = notificationEnabled; requestNotificationPermission(); });
+
+        function save() { localStorage.setItem('riskProjects', JSON.stringify(projects)); localStorage.setItem('riskThresholds', JSON.stringify(thresholds)); localStorage.setItem('riskHistories', JSON.stringify(histories)); }
+
+        function showTab(name) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.className = 'tab-btn px-3 py-1 rounded hover:bg-red-500');
+            document.getElementById('tab-' + name).classList.remove('hidden');
+            if (name === 'config') renderThresholdConfig();
+            if (name === 'history') renderPrediction();
+            if (name === 'suggestions') renderSuggestions();
+        }
+
+        function getProject(id) { return projects.find(p => p.id === id) || projects[0]; }
+        function getStatus(val, indId) { const th = thresholds[indId]; if (val >= th.danger) return 'danger'; if (val >= th.warn) return 'warning'; return 'normal'; }
+
+        function refreshDashboard() {
+            const proj = getProject(currentProjectId);
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
+
+            const cardsContainer = document.getElementById('riskCards');
+            cardsContainer.innerHTML = RISK_INDICATORS.map(ind => {
+                const val = proj.risks[ind.id];
+                const status = getStatus(val, ind.id);
+                const colorMap = { normal: 'border-green-500 bg-green-50', warning: 'border-yellow-500 bg-yellow-50', danger: 'border-red-500 bg-red-50' };
+                const textMap = { normal: 'text-green-700', warning: 'text-yellow-700', danger: 'text-red-700' };
+                const iconMap = { normal: 'fa-check-circle text-green-500', warning: 'fa-exclamation-triangle text-yellow-500', danger: 'fa-times-circle text-red-500' };
+                const labelMap = { normal: '正常', warning: '警告', danger: '危险' };
+                return `<div class="bg-white rounded-xl shadow p-5 border-l-4 ${colorMap[status]}">
+                    <div class="flex items-center justify-between mb-2"><span class="text-sm font-medium">${ind.name}</span><i class="fa ${iconMap[status]}"></i></div>
+                    <div class="text-3xl font-bold ${textMap[status]}">${val}<span class="text-sm font-normal text-gray-500">${ind.unit}</span></div>
+                    <div class="text-xs text-gray-500 mt-1">${ind.desc}</div>
+                    <span class="inline-block mt-2 px-2 py-0.5 rounded text-xs font-medium ${textMap[status]} bg-opacity-20" style="background:${status === 'normal' ? '#d1fae5' : status === 'warning' ? '#fef3c7' : '#fee2e2'}">${labelMap[status]}</span>
+                </div>`;
+            }).join('');
+
+            const heatmap = document.getElementById('riskHeatmap');
+            heatmap.innerHTML = RISK_INDICATORS.map(ind => {
+                const val = proj.risks[ind.id];
+                const status = getStatus(val, ind.id);
+                const intensity = Math.min(1, val / (thresholds[ind.id].danger * 1.5));
+                const r = Math.round(255 * intensity); const g = Math.round(255 * (1 - intensity));
+                const bg = status === 'normal' ? `rgb(${r}, ${g}, 100)` : status === 'warning' ? `rgb(${r}, ${g}, 50)` : `rgb(${r}, 50, 50)`;
+                return `<div class="rounded-lg p-4 text-center text-white font-bold" style="background:${bg};min-height:80px"><div class="text-xs opacity-80">${ind.name}</div><div class="text-2xl mt-1">${val}${ind.unit}</div></div>`;
+            }).join('');
+
+            const dangerItems = RISK_INDICATORS.filter(ind => getStatus(proj.risks[ind.id], ind.id) === 'danger');
+            const warningItems = RISK_INDICATORS.filter(ind => getStatus(proj.risks[ind.id], ind.id) === 'warning');
+            const alertBar = document.getElementById('alertBar');
+            if (dangerItems.length > 0) {
+                alertBar.className = 'mb-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded animate-pulse';
+                alertBar.innerHTML = `<i class="fa fa-bell mr-2"></i> <strong>危险预警！</strong> ${dangerItems.map(d => d.name).join('、')} 指标严重超标，请立即处理！<button onclick="showTab('suggestions')" class="ml-2 text-xs underline underline-offset-2">查看处置建议 →</button>`;
+                alertBar.classList.remove('hidden');
+                dangerItems.forEach(ind => sendRiskNotification(proj, ind, proj.risks[ind.id], thresholds[ind.id]));
+            } else if (warningItems.length > 0) {
+                alertBar.className = 'mb-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded';
+                alertBar.innerHTML = `<i class="fa fa-bell mr-2"></i> <strong>注意：</strong> ${warningItems.map(d => d.name).join('、')} 指标接近阈值，请关注。<button onclick="showTab('suggestions')" class="ml-2 text-xs underline underline-offset-2">查看处置建议 →</button>`;
+                alertBar.classList.remove('hidden');
+            } else {
+                alertBar.classList.add('hidden');
+            }
+
+            const projHist = histories[currentProjectId] || [];
+            const totalScore = RISK_INDICATORS.reduce((s, ind) => {
+                const val = proj.risks[ind.id]; const th = thresholds[ind.id];
+                return s + Math.min(100, (val / th.danger) * 100);
+            }, 0) / RISK_INDICATORS.length;
+            projHist.push({ time: new Date().toISOString(), score: Math.round(totalScore) });
+            if (projHist.length > 10) projHist.shift();
+            histories[currentProjectId] = projHist;
+            save();
+        }
+
+        function simulateData() {
+            const proj = getProject(currentProjectId);
+            RISK_INDICATORS.forEach(ind => {
+                const base = DEMO_PROJECTS.find(p => p.id === currentProjectId)?.risks[ind.id] || 5;
+                const change = (Math.random() - 0.3) * base * 0.5;
+                proj.risks[ind.id] = Math.max(0, Math.round((base + change) * 10) / 10);
+            });
+            refreshDashboard();
+        }
+
+        function startAutoSim() {
+            const btn = document.getElementById('autoBtn');
+            if (autoTimer) { clearInterval(autoTimer); autoTimer = null; btn.innerHTML = '<i class="fa fa-play mr-1"></i>自动模拟'; btn.className = 'bg-orange-600 text-white px-4 py-2 rounded text-sm hover:bg-orange-700'; return; }
+            btn.innerHTML = '<i class="fa fa-stop mr-1"></i>停止'; btn.className = 'bg-gray-600 text-white px-4 py-2 rounded text-sm';
+            autoTimer = setInterval(() => simulateData(), 3000);
+        }
+
+        function switchProject() { currentProjectId = document.getElementById('projectSelect').value; refreshDashboard(); }
+        function renderThresholdConfig() {
+            const container = document.getElementById('thresholdConfig');
+            container.innerHTML = RISK_INDICATORS.map(ind => {
+                const th = thresholds[ind.id];
+                return `<div class="p-4 bg-gray-50 rounded-lg"><div class="flex items-center gap-2 mb-3"><i class="fa ${ind.icon} text-red-600"></i><span class="font-medium">${ind.name}</span><span class="text-xs text-gray-500">${ind.desc}</span></div><div class="flex gap-4"><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">警告阈值 (${ind.unit})</label><input type="number" id="th_${ind.id}_warn" value="${th.warn}" class="w-full border rounded p-2 text-sm" step="0.5"></div><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">危险阈值 (${ind.unit})</label><input type="number" id="th_${ind.id}_danger" value="${th.danger}" class="w-full border rounded p-2 text-sm" step="0.5"></div></div></div>`;
+            }).join('');
+        }
+
+        function saveThresholds() {
+            RISK_INDICATORS.forEach(ind => { thresholds[ind.id] = { warn: parseFloat(document.getElementById(`th_${ind.id}_warn`).value) || 0, danger: parseFloat(document.getElementById(`th_${ind.id}_danger`).value) || 0 }; });
+            save(); refreshDashboard(); alert('阈值配置已保存');
+        }
+
+        // ============================================================
+        // 风险处置建议库
+        // ============================================================
+        function renderSuggestions() {
+            const filter = document.getElementById('suggestionFilter').value;
+            const container = document.getElementById('suggestionList');
+            let html = '';
+
+            const riskLabels = { schedule: '进度偏差', commDelay: '沟通延迟', resource: '资源不足', requirement: '需求变更', quality: '质量风险' };
+
+            RISK_INDICATORS.forEach(ind => {
+                if (filter !== 'all' && filter !== ind.id) return;
+                const sugList = getSuggestions(ind.id);
+                if (sugList.length === 0) return;
+                html += `<div class="mb-4"><h4 class="font-medium text-red-700 text-sm mb-2"><i class="fa fa-tag mr-1"></i>${riskLabels[ind.id] || ind.name}（${sugList.length}个方案）</h4>`;
+                sugList.forEach((s, i) => {
+                    html += `<div class="p-3 bg-gray-50 rounded-lg border border-gray-200 mb-2">
+                        <div class="flex items-start justify-between">
+                            <div><span class="font-medium text-sm">${i+1}. ${s.title}</span>${s.owner ? `<span class="text-xs text-gray-400 ml-2">负责人: ${s.owner}</span>` : ''}</div>
+                            <div class="flex gap-1">
+                                <button onclick="applySuggestion('${ind.id}', ${i})" class="text-xs text-indigo-600 hover:text-indigo-800" title="应用到当前项目"><i class="fa fa-send-o"></i></button>
+                                <button onclick="deleteSuggestion('${ind.id}', ${i})" class="text-xs text-red-400 hover:text-red-600" title="删除"><i class="fa fa-trash"></i></button>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">${s.steps.map((st, si) => `<div>${si+1}. ${st}</div>`).join('')}</div>
+                    </div>`;
+                });
+                html += `</div>`;
+            });
+
+            container.innerHTML = html || '<div class="text-center py-10 text-gray-400">暂无处置建议，请先配置风险指标。</div>';
+        }
+
+        function applySuggestion(type, idx) {
+            const sugList = getSuggestions(type);
+            const sug = sugList[idx];
+            if (!sug) return;
+            addToast(`建议: ${sug.title} - 请通知${sug.owner || '相关负责人'}执行`);
+            if (notificationEnabled && Notification.permission === 'granted') {
+                try { new Notification('处置建议', { body: sug.title + '\n' + sug.steps.join('\n') }); } catch(e) {}
+            }
+        }
+
+        function deleteSuggestion(type, idx) {
+            const defaults = DEFAULT_SUGGESTIONS[type] || [];
+            if (idx < defaults.length) { addToast('默认模板不可删除'); return; }
+            const customIdx = idx - defaults.length;
+            if (!customSuggestions[type]) customSuggestions[type] = [];
+            customSuggestions[type].splice(customIdx, 1);
+            saveSuggestions();
+            renderSuggestions();
+        }
+
+        function showAddSuggestion() { document.getElementById('addSuggestionPanel').classList.remove('hidden'); }
+        function cancelAddSuggestion() { document.getElementById('addSuggestionPanel').classList.add('hidden'); }
+
+        function saveSuggestion() {
+            const type = document.getElementById('newSugType').value;
+            const title = document.getElementById('newSugTitle').value.trim();
+            const stepsText = document.getElementById('newSugSteps').value.trim();
+            const owner = document.getElementById('newSugOwner').value.trim();
+            if (!title || !stepsText) { alert('请填写标题和步骤'); return; }
+            const steps = stepsText.split('\n').filter(s => s.trim()).map(s => s.replace(/^\d+[\.\)]\s*/, ''));
+            if (!customSuggestions[type]) customSuggestions[type] = [];
+            customSuggestions[type].push({ title, steps, owner });
+            saveSuggestions();
+            document.getElementById('newSugTitle').value = ''; document.getElementById('newSugSteps').value = ''; document.getElementById('newSugOwner').value = '';
+            cancelAddSuggestion();
+            renderSuggestions();
+            addToast('处置模板已保存');
+        }
+
+        // ============================================================
+        // 趋势预测（移动平均 + 线性回归）
+        // ============================================================
+        function renderPrediction() {
+            const projHist = histories[currentProjectId] || [];
+            const chartEl = document.getElementById('trendChart');
+
+            if (projHist.length < 2) {
+                chartEl.innerHTML = '<div class="text-center text-gray-400 py-10">数据不足，请先在监控面板中模拟刷新数据（至少需要2个数据点）</div>';
+                document.getElementById('predictionStats').innerHTML = '';
+                document.getElementById('predictionAdvice').innerHTML = '';
+                return;
+            }
+
+            const vals = projHist.map(h => h.score);
+            const labels = projHist.map(h => h.time.slice(5, 10));
+
+            // 简单线性回归预测未来3个点
+            const n = vals.length;
+            const xMean = (n - 1) / 2;
+            const yMean = vals.reduce((s, v) => s + v, 0) / n;
+            let num = 0, den = 0;
+            vals.forEach((v, i) => {
+                num += (i - xMean) * (v - yMean);
+                den += (i - xMean) * (i - xMean);
+            });
+            const slope = den !== 0 ? num / den : 0;
+            const intercept = yMean - slope * xMean;
+
+            // 预测未来3个点
+            const predictions = [];
+            for (let i = 1; i <= 3; i++) {
+                const predVal = Math.round(Math.max(0, Math.min(100, slope * (n - 1 + i) + intercept)));
+                predictions.push(predVal);
+            }
+
+            // 3点移动平均
+            const ma3 = [];
+            for (let i = 2; i < n; i++) {
+                ma3.push(Math.round((vals[i-2] + vals[i-1] + vals[i]) / 3));
+            }
+
+            const maxVal = Math.max(...vals, ...predictions, 100);
+            const w = 700, h = 250, pad = 40;
+
+            // 绘制历史线
+            let histPath = '';
+            vals.forEach((v, i) => { const x = pad + (i / (n - 1)) * (w - 2 * pad); const y = h - pad - (v / maxVal) * (h - 2 * pad); histPath += (i === 0 ? 'M' : 'L') + x.toFixed(0) + ',' + y.toFixed(0); });
+
+            // 绘制预测线
+            const lastX = pad + ((n - 1) / (n - 1)) * (w - 2 * pad);
+            const lastY = h - pad - (vals[n-1] / maxVal) * (h - 2 * pad);
+            let predPath = `M${lastX.toFixed(0)},${lastY.toFixed(0)}`;
+            predictions.forEach((v, i) => {
+                const x = pad + ((n - 1 + i + 1) / (n + 2)) * (w - 2 * pad);
+                const y = h - pad - (v / maxVal) * (h - 2 * pad);
+                predPath += `L${x.toFixed(0)},${y.toFixed(0)}`;
+            });
+
+            // 移动平均线
+            let maPath = '';
+            if (ma3.length > 0) {
+                const maStartIdx = 2;
+                ma3.forEach((v, i) => {
+                    const x = pad + ((maStartIdx + i) / (n - 1)) * (w - 2 * pad);
+                    const y = h - pad - (v / maxVal) * (h - 2 * pad);
+                    maPath += (i === 0 ? 'M' : 'L') + x.toFixed(0) + ',' + y.toFixed(0);
+                });
+            }
+
+            // 参考线
+            const warnY = h - pad - (50 / maxVal) * (h - 2 * pad);
+            const dangerY = h - pad - (80 / maxVal) * (h - 2 * pad);
+
+            // X轴标签（历史+预测）
+            const allLabels = [...labels, '预测+1', '预测+2', '预测+3'];
+
+            chartEl.innerHTML = `<svg viewBox="0 0 ${w} ${h}" class="w-full h-full">
+                <line x1="${pad}" y1="${warnY}" x2="${w - pad}" y2="${warnY}" stroke="#f59e0b" stroke-dasharray="5,5" stroke-width="1"/>
+                <text x="${w - pad + 5}" y="${warnY + 4}" fill="#f59e0b" font-size="10">警告线 50</text>
+                <line x1="${pad}" y1="${dangerY}" x2="${w - pad}" y2="${dangerY}" stroke="#ef4444" stroke-dasharray="5,5" stroke-width="1"/>
+                <text x="${w - pad + 5}" y="${dangerY + 4}" fill="#ef4444" font-size="10">危险线 80</text>
+                ${maPath ? `<polyline points="${maPath.slice(1).split('L').join(' ')}" fill="none" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="4,3"/>` : ''}
+                ${histPath ? `<polyline points="${histPath.slice(1).split('L').join(' ')}" fill="none" stroke="#dc2626" stroke-width="2"/>` : ''}
+                <polyline points="${predPath.slice(1).split('L').join(' ')}" fill="none" stroke="#f97316" stroke-width="2" stroke-dasharray="6,4"/>
+                ${vals.map((v, i) => { const x = pad + (i / (n - 1)) * (w - 2 * pad); const y = h - pad - (v / maxVal) * (h - 2 * pad); return `<circle cx="${x}" cy="${y}" r="4" fill="#dc2626"/><text x="${x}" y="${y - 8}" text-anchor="middle" fill="#dc2626" font-size="10">${v}</text>`; }).join('')}
+                ${predictions.map((v, i) => { const x = pad + ((n - 1 + i + 1) / (n + 2)) * (w - 2 * pad); const y = h - pad - (v / maxVal) * (h - 2 * pad); return `<circle cx="${x}" cy="${y}" r="4" fill="#f97316" stroke="white" stroke-width="2"/><text x="${x}" y="${y - 8}" text-anchor="middle" fill="#f97316" font-size="10">${v}?</text>`; }).join('')}
+                ${allLabels.map((l, i) => { const x = pad + (i / Math.max(allLabels.length - 1, 1)) * (w - 2 * pad); return `<text x="${x}" y="${h - 5}" text-anchor="middle" fill="#9ca3af" font-size="9">${l}</text>`; }).join('')}
+                <text x="${w - 20}" y="${pad - 5}" fill="#8b5cf6" font-size="9">— MA3</text>
+                <text x="${w - 20}" y="${pad + 12}" fill="#f97316" font-size="9">— 预测</text>
+            </svg>`;
+
+            // 预测统计
+            const trend = vals.length >= 2 ? ((vals[vals.length - 1] - vals[0]) / vals[0] * 100).toFixed(1) : 0;
+            const avgScore = vals.reduce((s, v) => s + v, 0) / n;
+            const predAvg = predictions.reduce((s, v) => s + v, 0) / predictions.length;
+            const overallTrend = slope > 0 ? '上升' : slope < 0 ? '下降' : '平稳';
+
+            document.getElementById('predictionStats').innerHTML = `
+                <div class="flex justify-between p-2 bg-red-50 rounded"><span class="text-sm">当前风险分</span><span class="font-bold text-lg text-red-600">${vals[n-1]}</span></div>
+                <div class="flex justify-between p-2 bg-blue-50 rounded"><span class="text-sm">平均风险分</span><span class="font-bold text-lg text-blue-600">${avgScore.toFixed(0)}</span></div>
+                <div class="flex justify-between p-2 bg-amber-50 rounded"><span class="text-sm">预测风险分</span><span class="font-bold text-lg text-amber-600">${predAvg.toFixed(0)}</span></div>
+                <div class="flex justify-between p-2 bg-purple-50 rounded"><span class="text-sm">整体趋势</span><span class="font-bold text-lg ${slope > 0 ? 'text-red-600' : 'text-green-600'}">${overallTrend} (${slope > 0 ? '+' : ''}${slope.toFixed(1)})</span></div>
+                <div class="flex justify-between p-2 bg-gray-50 rounded"><span class="text-sm">数据点数</span><span class="font-bold text-lg">${n}</span></div>
+            `;
+
+            // 预警建议
+            let advice = '';
+            if (predAvg >= 80) {
+                advice = '<div class="bg-red-100 rounded-lg p-3 text-red-700"><i class="fa fa-exclamation-triangle mr-1"></i><strong>高风险警报：</strong>预测风险分超过80，建议立即采取以下措施：<ul class="text-xs mt-2 space-y-1"><li>1. 召开紧急风险会议</li><li>2. 逐项检查各风险指标</li><li>3. 启动应急预案</li><li>4. 向管理层汇报</li></ul></div>';
+            } else if (predAvg >= 50) {
+                advice = '<div class="bg-yellow-100 rounded-lg p-3 text-yellow-700"><i class="fa fa-exclamation-circle mr-1"></i><strong>中等风险提示：</strong>风险分呈' + overallTrend + '趋势，建议关注：<ul class="text-xs mt-2 space-y-1"><li>1. 检查警告阈值指标</li><li>2. 制定预防措施</li><li>3. 加强监控频率</li></ul></div>';
+            } else {
+                advice = '<div class="bg-green-100 rounded-lg p-3 text-green-700"><i class="fa fa-check-circle mr-1"></i><strong>低风险：</strong>项目风险处于可控范围。<br><span class="text-xs">建议保持当前监控频率，定期复盘。</span></div>';
+            }
+
+            if (slope > 0.5) {
+                advice += '<div class="mt-2 bg-orange-50 rounded-lg p-3 text-orange-700 text-xs"><i class="fa fa-arrow-up mr-1"></i><strong>趋势警告：</strong>风险呈快速上升趋势（斜率 ' + slope.toFixed(1) + '），建议加快处理节奏。</div>';
+            } else if (slope < -0.5) {
+                advice += '<div class="mt-2 bg-green-50 rounded-lg p-3 text-green-700 text-xs"><i class="fa fa-arrow-down mr-1"></i><strong>向好趋势：</strong>风险正在下降，当前措施有效，继续保持。</div>';
+            }
+
+            document.getElementById('predictionAdvice').innerHTML = advice;
+        }
+
+        // 初始化项目选择器
+        const projSel = document.getElementById('projectSelect');
+        projects.forEach(p => { projSel.innerHTML += `<option value="${p.id}">${p.name}</option>`; });
+        currentProjectId = projects[0].id;
+        projSel.value = currentProjectId;
+        refreshDashboard();
+
+        window.addEventListener('beforeunload', () => { if (autoTimer) clearInterval(autoTimer); });
+
+        function addToast(msg) {
+            const el = document.createElement('div');
+            el.className = 'fixed bottom-6 right-6 bg-slate-800 text-white px-5 py-3 rounded-lg shadow-lg text-sm z-50';
+            el.textContent = msg;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 2500);
+        }
+    </script>
+</body>
+</html>

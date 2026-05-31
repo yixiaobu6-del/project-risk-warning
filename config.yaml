@@ -1,0 +1,92 @@
+# 项目风险早期预警 - 配置文件
+
+# 风险信号配置
+risk_signals:
+  schedule_delay:
+    name: 进度延迟
+    enabled: true
+    weight: 0.25
+    threshold_days: 3
+    warning_days: 2
+    critical_days: 5
+    description: 任务实际完成日期超过计划完成日期
+
+  bug_density:
+    name: Bug密度上升
+    enabled: true
+    weight: 0.20
+    threshold_per_kloc: 5
+    warning_per_kloc: 3
+    description: 每千行代码的缺陷数
+
+  team_churn:
+    name: 人员流动
+    enabled: true
+    weight: 0.15
+    threshold_rate: 0.1
+    warning_rate: 0.05
+    description: 团队人员变动率
+
+  communication_delay:
+    name: 沟通延迟
+    enabled: true
+    weight: 0.10
+    threshold_hours: 24
+    warning_hours: 12
+    description: 关键消息的平均响应时间
+
+  cost_overrun:
+    name: 成本超支
+    enabled: true
+    weight: 0.15
+    threshold_percent: 10
+    warning_percent: 5
+    description: 实际支出超出预算的比例
+
+  requirement_churn:
+    name: 需求变更
+    enabled: true
+    weight: 0.15
+    threshold_count: 5
+    warning_count: 3
+    description: 需求变动的频率和幅度
+
+# 分析配置
+analysis:
+  assessment_mode: both
+  bayesian_prior: 0.3
+  confidence_threshold: 0.6
+  update_frequency_hours: 24
+  window_size_days: 30
+
+# 风险等级
+risk_levels:
+  low:
+    name: 低风险
+    color: green
+    range: [0, 0.3]
+  medium:
+    name: 中风险
+    color: yellow
+    range: [0.3, 0.6]
+  high:
+    name: 高风险
+    color: orange
+    range: [0.6, 0.8]
+  critical:
+    name: 严重风险
+    color: red
+    range: [0.8, 1.0]
+
+# 报告配置
+report:
+  output_dir: ./reports
+  formats: [json, html]
+  auto_generate: true
+
+# 项目配置
+project:
+  name: 默认项目
+  phase: 开发中
+  team_size: 10
+  weekly_hours: 40
